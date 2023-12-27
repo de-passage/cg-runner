@@ -23,6 +23,41 @@ struct std::basic_ostream<T> &operator<<(struct std::basic_ostream<T> &out,
                                          pid_t p) {
   return out << (int)p;
 }
+
+template <class F, class R = int64_t, class P = std::milli>
+poll_error poll_one_each(const std::span<process_t> &ps, poll_event_t ev, F &&func) {
+  std::vector<pollfd> pollfds;
+  pollfds.reserve(ps.size());
+  for (auto proc : ps) {
+    pollfds.emplace_back(proc.stdout, ev);
+  }
+  auto s = ps.size();
+  size_t n = 0;
+  while (n < s) {
+    auto r = poll( std::span{pollfds} );
+    if (r.is_error()) {
+      auto e = r.error();
+      if (e == poll_error::interrupted || e == poll_error::again) {
+        continue;
+      }
+      return e;
+    }
+
+    for (size_t idx = 0; idx < pollfds.size(); ++idx) {
+      if (pollfds[idx].revents == 0)
+        continue;
+      n++;
+      pollfds[idx].invalidate();
+      if constexpr (std::is_invocable_v<F, poll_event_t, process_t>) {
+        func(pollfds[idx].revents, ps[idx]);
+      } else {
+        func(ps[idx]);
+      }
+    }
+  }
+
+  return poll_error::success;
+}
 } // namespace dpsg
 
 auto run() {
@@ -47,8 +82,8 @@ struct process_pool {
 };
 
 struct option_t {
-  int process_count = 1;
-  int parallel_processes = 1;
+  int process_count = 20;
+  int parallel_processes = 4;
   bool generate_output = true;
 };
 

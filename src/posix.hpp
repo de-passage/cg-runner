@@ -241,6 +241,18 @@ enum class poll_event_t : short {
   exception = POLLPRI,
 };
 
+enum class poll_error : int {
+  success = 0,
+  mem_fault = EFAULT,
+  invalid_pollfd_count = EINVAL,
+  interrupted = EINTR,
+  memory_allocation = ENOMEM,
+  again = EAGAIN,
+};
+
+template<class T>
+using poll_result = integer_result<T, poll_error>;
+
 constexpr poll_event_t operator|(poll_event_t left,
                                  poll_event_t right) noexcept {
   return (poll_event_t)((short)left | (short)right);
@@ -259,19 +271,19 @@ struct pollfd : unix::pollfd {
 };
 
 template <class R = int64_t, class P = std::milli>
-integer_result<int>
+poll_result<int>
 poll(std::span<pollfd> pollfds,
-     std::chrono::duration<R, P> timeout = std::chrono::milliseconds(0)) {
+     std::chrono::duration<R, P> timeout = std::chrono::milliseconds(-1)) {
   auto timeout_i =
       std::chrono::duration_cast<std::chrono::milliseconds>(timeout);
-  return integer_result<int>::from_unknown(
+  return poll_result<int>::from_unknown(
       unix::poll(pollfds.data(), pollfds.size(), timeout_i.count()));
 }
 
 template <class F, class R = int64_t, class P = std::milli>
-integer_result<int>
+poll_result<int>
 poll(std::span<fd_t> fds, poll_event_t event, F &&func,
-     std::chrono::duration<R, P> timeout = std::chrono::milliseconds(0)) {
+     std::chrono::duration<R, P> timeout = std::chrono::milliseconds(-1)) {
   std::vector<pollfd> pollfds;
   pollfds.reserve(fds.size());
   for (auto fd : fds) {
@@ -297,7 +309,7 @@ poll(std::span<fd_t> fds, poll_event_t event, F &&func,
 template <
     class T, class G, class F, class R = int64_t, class P = std::milli,
     std::enable_if_t<std::is_same_v<std::invoke_result_t<std::decay_t<G>, std::add_lvalue_reference_t<std::decay_t<T>>>, fd_t>, int> = 0>
-integer_result<int>
+poll_result<int>
 poll(std::span<T> fds, G &&getter, poll_event_t event, F &&func,
      std::chrono::duration<R, P> timeout = std::chrono::milliseconds(0)) {
   std::vector<pollfd> pollfds;
@@ -308,7 +320,6 @@ poll(std::span<T> fds, G &&getter, poll_event_t event, F &&func,
 
   auto r = poll(pollfds, timeout);
   if (r.is_value()) {
-    std::cerr << "Poll returned " << r.value() << std::endl;
     for (size_t s = 0; s < pollfds.size(); ++s) {
       auto &p = pollfds[s];
       if (p.revents == 0)
@@ -321,23 +332,6 @@ poll(std::span<T> fds, G &&getter, poll_event_t event, F &&func,
     }
   }
   return r;
-}
-
-template <class F, class R = int64_t, class P = std::milli>
-void poll_one_each(const std::span<process_t> &ps, poll_event_t ev, F &&func) {
-  auto s = ps.size();
-  std::cerr << "Expecting " << s << " results" << std::endl;
-  size_t n = 0;
-  while (n < s) {
-    poll(
-        ps, [](process_t &p) { return p.stdout; }, ev,
-        [&](pollfd &p, size_t idx) {
-          func(ps[idx]);
-          std::cerr << "Invalidating" << (int)p.fd << std::endl;
-          p.invalidate();
-          n++;
-        });
-  }
 }
 
 struct never {

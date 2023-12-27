@@ -15,6 +15,9 @@ SRCS := $(shell find $(SRC_DIRS) -type f -name '*.cpp')
 # Specify the object files
 OBJS := $(SRCS:%=$(BUILD_DIR)/%.o)
 
+# As an example, ./build/hello.cpp.o turns into ./build/hello.cpp.d
+DEPS := $(OBJS:.o=.d)
+
 TARGET_PATH := $(BUILD_DIR)/$(TARGET_EXEC)
 
 # Specify the include directories
@@ -57,7 +60,7 @@ clean:
 	rm -r $(BUILD_DIR)
 
 run: $(BUILD_DIR)/$(TARGET_EXEC)
-	$(BUILD_DIR)/$(TARGET_EXEC)
+	$(BUILD_DIR)/$(TARGET_EXEC) $(ARGS)
 
 # Include the .d makefiles. The - at the front suppresses the errors of missing
 # Makefiles. Initially, all the .d files will be missing, and we don't want those
