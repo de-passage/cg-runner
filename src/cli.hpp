@@ -10,14 +10,18 @@ enum class parse_error : int {
 };
 using integer_parse_result = dpsg::integer_result<int, parse_error>;
 
+static_assert(integer_parse_result{0}.is_value());
+static_assert(integer_parse_result{parse_error::invalid_character}.is_error());
+static_assert(integer_parse_result{parse_error::empty_string}.is_error());
+
 inline integer_parse_result parse_unsigned_int(std::string_view str) {
   if (str.size() == 0) {
-    return integer_parse_result::from_error(parse_error::empty_string);
+    return integer_parse_result(parse_error::empty_string);
   }
   int r = 0;
   for (size_t s = 0; s < str.size(); ++s) {
     if (!isdigit(str[s])) {
-      return integer_parse_result::from_error(parse_error::invalid_character);
+      return integer_parse_result(parse_error::invalid_character);
     }
     r *= 10;
     r += str[s] - '0';

@@ -8,9 +8,16 @@
 
 namespace dpsg::vt100 {
 // TYPES & OPERATIONS
-template <std::size_t S, char End = 0> struct termcode_sequence {
-  uint8_t codes[S + (End == 0 ? 0 : 1)];
+template <std::size_t S, char End = 0, char Begin = 0> struct termcode_sequence {
+  uint8_t codes[S];
 };
+
+namespace detail {
+template<char B, char E, class ...Chars>
+inline constexpr termcode_sequence<sizeof...(Chars), E, B> termcode_sequence_from(Chars... chars) noexcept {
+  return termcode_sequence<sizeof...(Chars), E, B>{(uint8_t)chars...};
+}
+}
 
 template <char End> using termcode = termcode_sequence<1, End>;
 
@@ -28,51 +35,57 @@ constexpr auto operator|(termcode_tuple<Ts...> t1,
                                        static_cas<std::tuple<Us...>>(t2))};
 }
 
-template <class... Ts, size_t S, char E>
+template <class... Ts, size_t S, char E, char B>
 constexpr auto operator|(termcode_tuple<Ts...> t1,
-                         termcode_sequence<S, E> t2) noexcept {
+                         termcode_sequence<S, E, B> t2) noexcept {
   return termcode_tuple{
       std::tuple_cat(static_cast<std::tuple<Ts...>>(t1), std::make_tuple(t2))};
 }
 
-template <class... Ts, size_t S, char E>
-constexpr auto operator|(termcode_sequence<S, E> t1,
+template <class... Ts, size_t S, char E, char B>
+constexpr auto operator|(termcode_sequence<S, E, B> t1,
                          termcode_tuple<Ts...> t2) noexcept {
   return termcode_tuple{
       std::tuple_cat(std::make_tuple(t1), static_cast<std::tuple<Ts...>>(t2))};
 }
 
-template <std::size_t... I1, std::size_t... I2, char End>
-constexpr auto concat_impl(termcode_sequence<sizeof...(I1), End> t1,
-                           termcode_sequence<sizeof...(I2), End> t2,
+template <std::size_t... I1, std::size_t... I2, char End, char Begin>
+constexpr auto concat_impl(termcode_sequence<sizeof...(I1), End, Begin> t1,
+                           termcode_sequence<sizeof...(I2), End, Begin> t2,
                            std::index_sequence<I1...>,
                            std::index_sequence<I2...>) noexcept {
-  return termcode_sequence<sizeof...(I1) + sizeof...(I2), End>{
+  return termcode_sequence<sizeof...(I1) + sizeof...(I2), End, Begin>{
       .codes = {t1.codes[I1]..., t2.codes[I2]...}};
 }
 } // namespace detail
 
-template <std::size_t S1, std::size_t S2, char End,
+template <std::size_t S1, std::size_t S2, char End, char Begin,
           std::enable_if_t<End != 0, int> = 0>
-constexpr auto operator|(termcode_sequence<S1, End> s1,
-                         termcode_sequence<S2, End> s2) noexcept {
+constexpr auto operator|(termcode_sequence<S1, End, Begin> s1,
+                         termcode_sequence<S2, End, Begin> s2) noexcept {
   return detail::concat_impl(s1, s2, std::make_index_sequence<S1>{},
                              std::make_index_sequence<S2>{});
 }
 
-template <size_t S1, size_t S2, char E, char F,
+template <size_t S1, size_t S2, char E, char F, char B, char C,
           std::enable_if_t<(E != F || E == 0), int> = 0>
-constexpr auto operator|(termcode_sequence<S1, E> t1,
-                         termcode_sequence<S2, F> t2) noexcept {
+constexpr auto operator|(termcode_sequence<S1, E, B> t1,
+                         termcode_sequence<S2, F, C> t2) noexcept {
   return detail::termcode_tuple{std::make_tuple(t1, t2)};
 }
 
-template <class C, std::size_t S, char End>
+template <class C, std::size_t S, char End, char Begin>
 std::basic_ostream<C> &operator<<(std::basic_ostream<C> &os,
-                                  const termcode_sequence<S, End> &s) {
+                                  const termcode_sequence<S, End, Begin> &s) {
   os << "\033";
   if constexpr (S > 0) {
-    os << "[" << static_cast<int>(s.codes[0]);
+    os << "[";
+  }
+  if constexpr (Begin != 0) {
+    os << Begin;
+  }
+  if constexpr (S > 0) {
+     os << static_cast<int>(s.codes[0]);
   }
   for (std::size_t i = 1; i < S; ++i) {
     os << ';' << static_cast<int>(s.codes[i]);
@@ -167,10 +180,14 @@ inline constexpr auto cursor_backward(uint8_t n) noexcept {
 inline constexpr auto set_cursor(uint8_t x, uint8_t y) noexcept {
   return termcode_sequence<2, 'H'>{x, y};
 }
+
+static inline constexpr auto hide_cursor = detail::termcode_sequence_from<'?', 'l'>(25);
+static inline constexpr auto show_cursor = detail::termcode_sequence_from<'?', 'h'>(25);
+
 // Deliberately not supported. Getting the current cursor position involves
 // juggling between stdin and the terminal code output. Use ncurses if you need
-// something this complex. static constexpr inline termcode<'n'>
-// get_cursor{'6'};
+// something this complex.
+// static constexpr inline termcode<'n'> get_cursor{'6'};
 static constexpr inline single_termcode<'H'> home_cursor{};
 
 // TRUE COLORS

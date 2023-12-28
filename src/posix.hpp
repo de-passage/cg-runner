@@ -8,41 +8,32 @@
 #include <cassert>
 #include <vector>
 
-namespace dpsg {
-namespace unix {
+#include "integer_result.hpp"
+
+namespace dpsg::posix {
+namespace native {
 extern "C" {
 #include <sys/poll.h>
 #include <sys/select.h>
 #include <sys/wait.h>
 #include <unistd.h>
 }
-} // namespace unix
+} // namespace native
 
 enum class pid_t : uint64_t {};
 
 enum class fd_t : int {};
 
-template <class T, class Enum = T> struct integer_result {
-  T _value;
+template <class T, class Enum = T> struct integer_result : ::dpsg::integer_result<T, Enum> {
+  using base = ::dpsg::integer_result<T, Enum>;
+  using type = typename base::type;
+  using error_type = typename base::error_type;
 
-  constexpr static inline T error_bit = (T)((T)1 << (sizeof(T) * 8 - 1));
-
-  constexpr bool is_error() const { return (error_bit & _value) != 0; }
-
-  constexpr bool is_value() const { return (error_bit & _value) == 0; }
-
-  constexpr T value() const {
-    assert(is_value() && "integer_result is an error");
-    return _value;
-  }
-
-  constexpr Enum error() const {
-    assert(is_error() && "integer_result is not an error");
-    return (Enum)(_value ^ error_bit);
-  }
+  template<class U, std::enable_if_t<std::is_constructible_v<base, U>, int> = 0>
+  constexpr explicit integer_result(U value) noexcept : base{value} {}
 
   static inline integer_result from_errno() noexcept {
-    return {errno | error_bit};
+    return integer_result{errno | ::dpsg::integer_result<T,Enum>::error_bit};
   }
 
   static inline integer_result from_unknown(T value) noexcept {
@@ -50,7 +41,7 @@ template <class T, class Enum = T> struct integer_result {
   }
 
   static inline integer_result from_error(Enum error) noexcept {
-    return integer_result{(std::underlying_type_t<Enum>)(error) | error_bit};
+    return integer_result{(std::underlying_type_t<Enum>)(error) | ::dpsg::integer_result<T,Enum>::error_bit};
   }
 };
 
@@ -59,20 +50,20 @@ using long_err = integer_result<long>;
 
 
 inline long_err read(fd_t fd, char *buffer, size_t size) {
-  return long_err::from_unknown(unix::read((int)fd, buffer, size));
+  return long_err::from_unknown(native::read((int)fd, buffer, size));
 }
 
 template <size_t S> long_err read(fd_t fd, char (&buffer)[S]) {
-  return long_err::from_unknown(unix::read((int)fd, buffer, S));
+  return long_err::from_unknown(native::read((int)fd, buffer, S));
 }
 
 inline long_err write(fd_t fd, const char *buffer, size_t size) {
-  return long_err::from_unknown(unix::write((int)fd, buffer, size));
+  return long_err::from_unknown(native::write((int)fd, buffer, size));
 }
 
 template <class F> pid_t fork(F &&f) {
 
-  volatile int p = unix::fork();
+  volatile int p = native::fork();
   switch (p) {
   case -1:
     perror("Fork failed");
@@ -89,7 +80,7 @@ template <class F> pid_t fork(F &&f) {
   }
 }
 
-inline pid_t getpid() { return (pid_t)unix::getpid(); }
+inline pid_t getpid() { return (pid_t)native::getpid(); }
 
 struct wait_status {
   int error;
@@ -120,7 +111,7 @@ struct process_t {
 
   wait_status wait(int options = WUNTRACED | WCONTINUED) {
     int status;
-    unix::waitpid((int)pid, &status, options);
+    native::waitpid((int)pid, &status, options);
     return wait_status{.error = errno, .status = status};
   }
 };
@@ -129,7 +120,7 @@ inline process_t run_external(std::string_view name, const char *const *args) {
   enum RW { Read = 0, Write = 1 };
   int in[2], err[2], out[2];
   const auto pipe_open = [](int (&x)[2]) {
-    if (unix::pipe(x) == -1) {
+    if (native::pipe(x) == -1) {
       perror("Pipe opening failed");
       exit(1);
     }
@@ -141,30 +132,30 @@ inline process_t run_external(std::string_view name, const char *const *args) {
   auto p = fork([&]() {
     // We don't need to write on stdin or read from stdout/stderr
     // ignoring errors as there's nothing to do about them
-    unix::close(in[Write]);
-    unix::close(out[Read]);
-    unix::close(err[Read]);
-    if (unix::dup2(in[Read], STDIN_FILENO) == -1) {
+    native::close(in[Write]);
+    native::close(out[Read]);
+    native::close(err[Read]);
+    if (native::dup2(in[Read], STDIN_FILENO) == -1) {
       perror("Failed to rebind stdin");
       exit(1);
     }
-    if (unix::dup2(out[Write], STDOUT_FILENO) == -1) {
+    if (native::dup2(out[Write], STDOUT_FILENO) == -1) {
       perror("Failed to rebind stdin");
       exit(1);
     }
-    if (unix::dup2(in[Read], STDIN_FILENO) == -1) {
+    if (native::dup2(in[Read], STDIN_FILENO) == -1) {
       perror("Failed to rebind stdin");
       exit(1);
     }
-    unix::close(in[Read]);
-    unix::close(out[Write]);
-    unix::close(err[Write]);
-    unix::execvp(name.data(), (char **)args);
+    native::close(in[Read]);
+    native::close(out[Write]);
+    native::close(err[Write]);
+    native::execvp(name.data(), (char **)args);
   });
 
-  unix::close(err[Write]);
-  unix::close(in[Read]);
-  unix::close(out[Write]);
+  native::close(err[Write]);
+  native::close(in[Read]);
+  native::close(out[Write]);
 
   process_t pr{
       .pid = p,
@@ -261,9 +252,9 @@ constexpr poll_event_t operator&(poll_event_t left,
   return (poll_event_t)((short)left & (short)right);
 }
 
-struct pollfd : unix::pollfd {
+struct pollfd : native::pollfd {
   pollfd(fd_t file_descriptor, poll_event_t event = (poll_event_t)0)
-      : unix::pollfd{(int)file_descriptor, (short)event, 0} {}
+      : native::pollfd{(int)file_descriptor, (short)event, 0} {}
 
   void invalidate() { this->fd = ~this->fd; }
 };
@@ -275,7 +266,7 @@ poll(std::span<pollfd> pollfds,
   auto timeout_i =
       std::chrono::duration_cast<std::chrono::milliseconds>(timeout);
   return poll_result<int>::from_unknown(
-      unix::poll(pollfds.data(), pollfds.size(), timeout_i.count()));
+      native::poll(pollfds.data(), pollfds.size(), timeout_i.count()));
 }
 
 template <class F, class R = int64_t, class P = std::milli>
