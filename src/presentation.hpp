@@ -35,6 +35,7 @@ private:
   constexpr static inline auto p1_color = dpsg::vt100::yellow;
   constexpr static inline auto p2_color = dpsg::vt100::cyan;
   constexpr static inline auto orange = dpsg::vt100::setf(255, 165, 0);
+  constexpr static inline auto comment_color = dpsg::vt100::setf(165, 165, 165);
 
   constexpr static inline auto COL_MAX = 3;
   constexpr static inline auto LINE_NB = 20;
@@ -58,7 +59,7 @@ private:
 
 public:
   void print_header(int run_count);
-  void print_statistics(const struct statistics_t &stats);
+  void print_statistics(const struct statistics_t &stats, uint8_t position = LINE_NB + 2);
   void print_result(int run_count, const struct run_result &result,
                     struct statistics_t &stats);
 };

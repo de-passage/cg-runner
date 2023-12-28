@@ -2,6 +2,7 @@
 #include "options.hpp"
 #include "posix.hpp"
 #include "presentation.hpp"
+#include "runner.hpp"
 #include "statistics.hpp"
 #include "vt100.hpp"
 
@@ -47,51 +48,6 @@ poll_one_each(const std::span<dpsg::posix::process_t> &ps,
   return poll_error::success;
 }
 
-struct runner {
-
-  enum POSITIONS {
-    Referee = 2,
-    Player1 = 4,
-    Player2 = 6,
-    GenerateFlag = 7,
-    OutputName = 8,
-  };
-
-  const char *cmd_args[12] = {
-      "java",  // 0
-      "-jar",  // 1
-      nullptr, // 2
-      "-p1",   // 3
-      nullptr, // 4
-      "-p2",   // 5
-      nullptr, // 6
-      nullptr, // 7
-      nullptr, // 8
-      nullptr, // 9
-      nullptr, // 10
-      nullptr, // 11
-  };
-
-  dpsg::posix::process_t operator()(std::string_view output_file) {
-    if (cmd_args[GenerateFlag] != nullptr) {
-      cmd_args[OutputName] = output_file.data();
-    }
-    return dpsg::posix::run_external("java", cmd_args);
-  }
-};
-
-runner make_runner(const option_t &opts) {
-  runner r{};
-  r.cmd_args[runner::Player1] = opts.p1.data();
-  r.cmd_args[runner::Player2] = opts.p2.data();
-  r.cmd_args[runner::Referee] = opts.referee.data();
-  if (opts.generate_output) {
-    r.cmd_args[runner::GenerateFlag] = "-l";
-  }
-
-  return r;
-}
-
 int main(int argc, const char **argv) {
   using namespace dpsg::vt100;
   using namespace dpsg;
@@ -130,8 +86,6 @@ int main(int argc, const char **argv) {
   int left_to_run = opts.process_count;
   auto current_offset = 0;
 
-  std::cout << dpsg::vt100::clear;
-
   std::vector<dpsg::posix::process_t> processes;
   processes.reserve(opts.parallel_processes);
   std::vector<run_result> results;
@@ -157,12 +111,15 @@ int main(int argc, const char **argv) {
                     auto &result = results[run_count];
 
                     std::string seed;
+
                     dpsg::posix::fd_streambuf buf{proc.stdout};
                     std::istream out{&buf};
                     out >> result.p1_score >> result.p2_score >> seed;
 
                     int eq = seed.find('=');
                     result.seed = std::string_view{seed}.substr(eq + 1);
+
+                    aggregate(result, stats);
 
                     p.print_result(run_count, result, stats);
                   });
