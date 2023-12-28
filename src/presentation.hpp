@@ -2,6 +2,7 @@
 #define HEADER_GUARD_DPSG_PRESENTATION_HPP
 
 #include "vt100.hpp"
+#include <vector>
 
 constexpr int digitnum(auto x) {
   int r = 0;
@@ -40,15 +41,14 @@ private:
   constexpr static inline auto COL_MAX = 3;
   constexpr static inline auto LINE_NB = 20;
   constexpr static inline auto LINE_WIDTH = 120 / COL_MAX;
-  template <std::size_t S> constexpr int char_cnt(const char (&)[S]) {
+  template <std::size_t S> constexpr static int char_cnt(const char (&)[S]) {
     return S - 1;
   }
   constexpr static inline const char run[] = "Run ";
   constexpr static inline const char sep[] = ": ";
-  constexpr static inline const char elipsis[] = "...";
 
-  constexpr int header_size(int run_count) {
-    return char_cnt(run) + digitnum(run_count) + char_cnt(sep);
+  constexpr static int header_size(int run_count) {
+    return char_cnt(run) + digitnum(run_count+1) + char_cnt(sep);
   }
   constexpr int count_to_col(int run_count) {
     return (((run_count / LINE_NB) % COL_MAX) * LINE_WIDTH) + 1;
@@ -58,10 +58,15 @@ private:
   }
 
 public:
-  void print_header(int run_count);
-  void print_statistics(const struct statistics_t &stats, uint8_t position = LINE_NB + 2);
-  void print_result(int run_count, const struct run_result &result,
-                    struct statistics_t &stats);
+  void update_header(int run_count);
+  void update_result(int run_count, const struct run_result &result,
+                    const struct statistics_t &stats);
+  void print_summary(const struct statistics_t &stats, const std::vector<run_result> &results);
+  void update_statistics(const struct statistics_t &stats);
+
+private:
+  void print_statistics(const struct statistics_t &stats);
+  void print_result(const struct run_result &result);
 };
 
 #endif // HEADER_GUARD_DPSG_PRESENTATION_HPP

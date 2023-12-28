@@ -100,13 +100,13 @@ int main(int argc, const char **argv) {
       auto of = output_file(run_count);
       processes.emplace_back(runner(of));
       results.emplace_back(run_result{.output_file = of});
-      p.print_header(run_count);
+      p.update_header(run_count);
     }
-    p.print_statistics(stats);
+    p.update_statistics(stats);
 
     poll_one_each(std::span{processes}, dpsg::posix::poll_event_t::read_ready,
-                  [current_offset, &results,
-                   &stats, &p](dpsg::posix::process_t &proc, size_t idx) {
+                  [current_offset, &results, &stats,
+                   &p](dpsg::posix::process_t &proc, size_t idx) {
                     auto run_count = idx + current_offset;
                     auto &result = results[run_count];
 
@@ -120,14 +120,16 @@ int main(int argc, const char **argv) {
                     result.seed = std::string_view{seed}.substr(eq + 1);
 
                     aggregate(result, stats);
-
-                    p.print_result(run_count, result, stats);
+                    p.update_result(run_count, result, stats);
                   });
 
     left_to_run -= batch_size;
     current_offset += batch_size;
     processes.clear();
   }
+
+  p.print_summary(stats, results);
+
 
   return 0;
 }

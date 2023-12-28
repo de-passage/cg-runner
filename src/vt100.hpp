@@ -188,6 +188,8 @@ static inline constexpr auto show_cursor = detail::termcode_sequence_from<'?', '
 // juggling between stdin and the terminal code output. Use ncurses if you need
 // something this complex.
 // static constexpr inline termcode<'n'> get_cursor{'6'};
+
+/// Sets the cursor on the home row
 static constexpr inline single_termcode<'H'> home_cursor{};
 
 // TRUE COLORS

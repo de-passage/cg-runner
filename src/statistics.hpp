@@ -3,7 +3,11 @@
 
 #include <cstddef>
 #include <string>
+#include <span>
+#include <numeric>
+#include <cmath>
 
+// Holder for statistics about the game.
 struct statistics_t {
   enum class player: int {
     p1 = 0,
@@ -65,6 +69,27 @@ struct statistics_t {
   void p2_wins(int p1_score, int p2_score) {
     _add_points(p1_score, p2_score);
     _add_player_victory(1);
+  }
+
+  static double moving_average(double current, auto score, auto n) {
+    return ((current * n) + score) / (n + 1);
+  }
+
+  static double deviation(double avg, auto score) {
+    return (avg - score) * (avg - score);
+  }
+
+  template<typename T>
+  static double variance(std::span<T> scores, double avg) {
+    return std::accumulate(std::begin(scores), std::end(scores), 0.0,
+                    [avg](double acc, T score) {
+                      return acc + deviation(avg, score);
+                    }) / scores.size();
+  }
+
+  template<typename T>
+  static double standard_deviation(std::span<T> scores, double avg) {
+    return std::sqrt(variance(scores, avg));
   }
 
 private:

@@ -2,24 +2,27 @@
 #include "statistics.hpp"
 #include <cmath>
 #include <iomanip>
+#include <span>
 
-void presenter::print_header(int run_count) {
+void presenter::update_header(int run_count) {
   using namespace dpsg::vt100;
+  constexpr const char elipsis[] = " ...";
+
+  _out << set_cursor(count_to_row(run_count), count_to_col(run_count)) << run
+       << (run_count + 1) << sep << red << elipsis << reset;
+
   const auto full_size = header_size(run_count) + char_cnt(elipsis);
-  _out << set_cursor(count_to_row(run_count), count_to_col(run_count)) << "Run "
-       << run_count << ':' << red << " ..." << reset;
   for (int i = full_size; i < LINE_WIDTH; ++i) {
     _out.put(' ');
   }
   _out.flush();
 }
-void presenter::print_statistics(const statistics_t &stats, uint8_t position) {
+void presenter::print_statistics(const statistics_t &stats) {
   using namespace dpsg::vt100;
   constexpr int score_size = 4;
   const auto s4 = std::setw(4);
 
   // Go after the list of runs
-  _out << set_cursor(position, 2);
   _out << comment_color << "Games played:" << s4 << stats.run_games() << " / "
        << s4 << stats.total_games << " (remaining:" << s4 << stats.left_to_run()
        << ") ";
@@ -88,11 +91,23 @@ void presenter::print_statistics(const statistics_t &stats, uint8_t position) {
   _out << reset << std::endl;
 }
 
-void presenter::print_result(int run_count, const run_result &result,
-                             statistics_t &stats) {
+void presenter::update_result(int run_count, const run_result &result,
+                              const statistics_t &stats) {
   using namespace dpsg::vt100;
   _out << set_cursor(count_to_row(run_count),
                      count_to_col(run_count) + header_size(run_count));
+  print_result(result);
+  update_statistics(stats);
+}
+
+void presenter::update_statistics(const statistics_t &stats) {
+  using namespace dpsg::vt100;
+  _out << set_cursor(std::min(stats.total_games, LINE_NB) + 2, 2);
+  print_statistics(stats);
+}
+
+void presenter::print_result(const run_result &result) {
+  using namespace dpsg::vt100;
   if (result.has_error(run_result::error::both_error)) {
     _out << (red | bold) << "Errors in both players!";
   } else if (result.has_error(run_result::error::p1_error)) {
@@ -111,7 +126,74 @@ void presenter::print_result(int run_count, const run_result &result,
     _out << (bold | orange) << "Draw!";
   }
   _out << reset << std::flush;
-  print_statistics(stats);
 }
 
+void presenter::print_summary(const struct statistics_t &stats,
+                              const std::vector<run_result> &results) {
+  using namespace dpsg::vt100;
+  _out << set_cursor(std::min(LINE_NB, stats.total_games) + 6, 0);
 
+  std::vector<std::string> p1_errors, p2_errors;
+  double point_difference_avg[2] = {0, 0};
+  std::vector<int> scores[2]{};
+
+  for (int i = 0; i < stats.run_games(); ++i) {
+    auto &result = results[i];
+    if (result.has_error(run_result::error::p1_error)) {
+      p1_errors.push_back(result.seed);
+    }
+    if (result.has_error(run_result::error::p2_error)) {
+      p2_errors.push_back(result.seed);
+    }
+
+    if (!result.has_error()) {
+      if (result.winner() == run_result::winner::p1) {
+        auto score = result.p1_score - result.p2_score;
+        point_difference_avg[0] = statistics_t::moving_average(
+            point_difference_avg[0], score, scores[0].size());
+        scores[0].push_back(score);
+      } else if (result.winner() == run_result::winner::p2) {
+        auto score = result.p2_score - result.p1_score;
+        point_difference_avg[1] = statistics_t::moving_average(
+            point_difference_avg[1], score, scores[1].size());
+        scores[1].push_back(score);
+      }
+    }
+  }
+
+  double deviation[2] = {
+      statistics_t::standard_deviation(std::span{scores[0]},
+                                       point_difference_avg[0]),
+      statistics_t::standard_deviation(std::span{scores[1]},
+                                       point_difference_avg[1]),
+  };
+
+  if (p1_errors.size() > 0) {
+    _out << "Player 1 error seeds (" << p1_errors.size() << "): [";
+    for (size_t s = 0; s < p1_errors.size(); ++s) {
+      if (s != 0) {
+        _out << ", ";
+      }
+      _out << red << p1_errors[s] << reset;
+    }
+    _out << "]" << std::endl;
+  }
+  if (p2_errors.size() > 0) {
+    _out << "Player 2 error seeds (" << p2_errors.size() << "): [";
+    for (size_t s = 0; s < p2_errors.size(); ++s) {
+      if (s != 0) {
+        _out << ", ";
+      }
+      _out << red << p2_errors[s] << reset;
+    }
+    _out << "]" << std::endl;
+  }
+
+  _out.precision(3);
+  _out << "Player 1 point difference average: " << p1_color << std::setw(6)
+       << point_difference_avg[0] << white
+       << "  standard deviation: " << p1_color << deviation[0] << white << std::endl;
+  _out << "Player 2 point difference average: " << p2_color << std::setw(6)
+       << point_difference_avg[1] << white
+       << "  standard deviation: " << p2_color << deviation[1] << white << std::endl;
+}
