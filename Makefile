@@ -32,7 +32,7 @@ LIBS =
 # Specify the compile flags
 CXXFLAGS =
 
-ACTUAL_CFLAGS = $(CXXFLAGS) $(shell cat compile_flags.txt)
+ACTUAL_CFLAGS = -MMD -MP $(CXXFLAGS) $(shell cat compile_flags.txt)
 
 # Specify the linker flags
 LDFLAGS =

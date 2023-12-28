@@ -323,15 +323,6 @@ poll(std::span<T> fds, G &&getter, poll_event_t event, F &&func,
   return r;
 }
 
-struct never {
-  never() = delete;
-  never(const never &) = delete;
-  never(never &&) = delete;
-  ~never() = delete;
-  never &operator=(const never &) = delete;
-  never &operator=(never &&) = delete;
-};
-
 } // namespace dpsg
 
 #endif // HEADER_GUARD_DPSG_POSIX_HPP
