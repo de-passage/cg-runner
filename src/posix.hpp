@@ -128,17 +128,15 @@ struct process_t {
 inline process_t run_external(std::string_view name, const char *const *args) {
   enum RW { Read = 0, Write = 1 };
   int in[2], err[2], out[2];
-  auto e = unix::pipe(in);
-  if (e == -1) {
-    perror("Pipe opening failed");
-    exit(1);
-  }
-  if ((e = unix::pipe(out)) == -1) {
-    perror("Pipe opening failed");
-  }
-  if ((e = unix::pipe(err)) == -1) {
-    perror("Pipe opening failed");
-  }
+  const auto pipe_open = [](int (&x)[2]) {
+    if (unix::pipe(x) == -1) {
+      perror("Pipe opening failed");
+      exit(1);
+    }
+  };
+  pipe_open(in);
+  pipe_open(out);
+  pipe_open(err);
 
   auto p = fork([&]() {
     // We don't need to write on stdin or read from stdout/stderr

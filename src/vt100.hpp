@@ -184,10 +184,10 @@ struct rgb : termcode_sequence<5, 'm'> {
   uint8_t b() const { return codes[4]; }
 };
 } // namespace detail
-inline detail::rgb setf(uint8_t r, uint8_t g, uint8_t b) noexcept {
+constexpr inline detail::rgb setf(uint8_t r, uint8_t g, uint8_t b) noexcept {
   return detail::rgb{{38, 2, r, g, b}};
 }
-inline detail::rgb setb(uint8_t r, uint8_t g, uint8_t b) noexcept {
+constexpr inline detail::rgb setb(uint8_t r, uint8_t g, uint8_t b) noexcept {
   return detail::rgb{{48, 2, r, g, b}};
 }
 
